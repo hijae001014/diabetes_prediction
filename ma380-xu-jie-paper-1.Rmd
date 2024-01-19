@@ -1,0 +1,582 @@
+---
+title: "ma380-xu-jie-paper-1"
+author: "Jie Xu"
+date: "2022-10-16"
+output: word_document
+---
+```{r,echo=FALSE}
+library(dplyr)
+library(tidyverse)
+library(ggplot2)
+library(gridExtra)
+library(statmod)
+```
+
+# Introduction
+
+In the era of a considerable leap in living standards, people are attaching much importance on the health. Diabetes mellitus is one of the most common chronic diseases where a person suffers from an extended level of blood glucose in the body. Diabetes can cause serious health problems, especially among women. Diabetes increases the risk of heart disease by about four times in women but only about two times in men[2]. Diabetes mellitus might relate to many factors of women such as age, pregnancy, body mass, etc. It is important to investigate the factors that might relate to the disease, and it is very beneficial to know if a woman will develop diabetes mellitus disease in next five years, so that they can apply predict potential risk, help the institution to classify new patients, and prepare some treatment to the patient. 
+
+The study examines a dataset from a group of medical doctors that records the diabetes mellitus disease. The records containing the data from 580 females about other important information to be considered, all of which are likely to be related to if the patient will develop diabetes mellitus in next five year. 
+
+The remainder of the report will provide all the important information for the investigation. The outline of the remainder is as follows. In Section 2, some important characteristics of the data will be presented. To better understand the data and prepare for the creation of classifier, Section 3 will fit the data into four different models and provide a discussion of the rationale of the selected models. Conclusions and recommendations can be found in Section 4, and all the details and interpretations will be along with the analysis.
+
+
+# Data Characteristic
+
+The data set is compiled by a group of doctors, the variable called "class" is the actual disease test result which is the response variable. The data set also includes eight predictors: the Number of pregnant, Plasma glucose concentration (2 hours in an oral glucose tolerance test), Diastolic blood pressure (mm Hg), Triceps skin fold thickness (mm), 2-Hour serum insulin (μU/ml), Body mass index (weight in kg/(height in m) squared), Diabetes pedigree function, and Age (years). The data set has 580 observations in total, we need to pay attention that there are some zero values in some variables. Some zero values might be normal, such as the variable Number of pregnant because it is reasonable that the patient does not have pregnancy experience. However, some might be missing value or not be normal, for example, it is impossible that the Plasma glucose concentration is zero or blood pressure is zero. These zero value might lead to some deviation that we need to be careful about. For the response variable "class", all the test results are coded as 1 or 0: 1 represents the patient has a positive diabetes test result and 0 represents the patient has a negative diabetes test result. 
+
+To have a general understanding on the data, a table is created below that shows the basic information about nine variables, including their mean, median, standard deviation, min value, 25% percentile value, 75% percentile value and the max value. In the summary table, we should pay attention to the unit of the variable. For example, because of the abbreviation, we might think of the unit of variable "mass" is a weight unit such as kg or lbs. Actually, in the case of body mass index, we should consider the unit of variable body mass index as weight in kg/(height in m) squared. As we mentioned above, we coded the binary result of response variable, so what the table shows are based on the response value after being coded.
+
+```{r,echo=FALSE}
+diabetes <- read.csv("diabetes-train.csv")
+diabetes$class.bi <- ifelse(diabetes$class=="tested_positive", 1, 0)
+data.char <- function(x) {
+  ans <- c(Mean = mean(x),
+           Median = median(x),
+           Std.Dev = sd(x),
+           Min = min(x),
+           percentile = quantile(x,probs= c(.25)),
+           percentile = quantile(x,probs= c(.75)),
+           Max = max(x))
+  return(ans)
+}
+round(t(apply(diabetes[,c(1:8,10)], 2, data.char)), 1)
+```
+
+Before creating the model, we might think of whether there is a relationship between predictors, because it is possible that the correlation between predictors might have influence on the model performance. By creating scatter plot, I discovered that there might be some correlations between variable body mass index and Triceps skin fold thickness, and also plasma glucose concentration and 2-Hour serum insulin, because in these two scatter plots, we are able to see a trend line, with the increase of x-coordinate value, the y-coordinate value will also increase. We also know that the variable Diabetes pedigree function is relate to the variable age, so we might assume that there will have relationship between diabetes pedigree function vs. age, and the scatter plot indicates a smooth linear relationship between them. It is always good to pay attention to the relationship between predictors.
+
+```{r,echo=FALSE}
+mass.skin <- ggplot(data = diabetes,mapping = aes(x = mass, y = skin ))+geom_point()+geom_smooth()+xlab("Body mass index(weight in kg/(height in m) squared)")+ylab("Triceps skin fold thickness(mm)")
+plas.insu <- ggplot(data = diabetes,mapping = aes(x = plas, y = insu ))+geom_point()+geom_smooth()+xlab("Plasma glucose concentration")+ylab("2-Hour serum insulin (μU/ml)")
+pedi.age <- ggplot(data = diabetes,mapping = aes(x = age, y = pedi))+geom_point()+geom_smooth()+xlab("Age(years)")+ylab("Diabetes pedigree function")
+
+mass.skin
+plas.insu
+pedi.age
+```
+
+To investigate whether all the variables are useful predictors for further study, eight scatter plot are created, from which x-coordinate represents a single predictor variable, and y-coordinate represents binary response "Have diabetes or not". To decide whether the variables are predictive or not, we can observe the plot: As the predictor increase, the probability of response variable also increases. All the plots indicates that all predictors are likely to be good indicators and they might be predictive, although there are some variability on the beginning or middle part of the trend line that might be caused by the zero value mentioned above. It will be good to point out the scatter plot of age vs. have diabetes is not like other plots: it has a quadratic trend line on it. It seems not convincing at the first glance, however, it is reasonable. If we look at the age between 20 to 45, with the age increase, the probability of having diabetes will also increasing, which can be very informative. The second half part of age (45-70) has a decreasing trend might due to the randomness caused by limited data points for that age range. In next section, we will apply these predictors to the model and see if they are useful for prediction. 
+
+```{r,echo=FALSE}
+#class.bi~preg
+p <- ggplot(data = diabetes, mapping = aes(x = preg, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Number of pregnant",
+              y = "Have diabete?",
+              title = "Scatter plot of Number of pregnant vs. Have diabetes?")
+p
+```
+
+
+```{r,echo=FALSE}
+#class.bi~plas
+p <- ggplot(data = diabetes, mapping = aes(x = plas, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Plasma glucose concentration",
+              y = "Have diabete?",
+              title = "Scatter plot of Plasma glucose concentration vs. Have diabetes?")
+p
+```
+```{r,echo=FALSE}
+#class.bi~pres
+p <- ggplot(data = diabetes, mapping = aes(x = pres, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Diastolic blood pressure",
+              y = "Have diabete?",
+              title = "Scatter plot of Diastolic blood pressure vs. Have diabetes?")
+p
+```
+
+```{r,echo=FALSE}
+#class.bi~skin
+p <- ggplot(data = diabetes, mapping = aes(x = skin, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Triceps skin fold thickness",
+              y = "Have diabete?",
+              title = "Scatter plot of Triceps skin fold thickness vs. Have diabetes?")
+p
+```
+
+```{r,echo=FALSE}
+#class.bi~insu
+p <- ggplot(data = diabetes, mapping = aes(x = insu, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "2-Hour serum insulin",
+              y = "Have diabete?",
+              title = "Scatter plot of 2-Hour serum insulin vs. Have diabetes?")
+p
+```
+
+```{r,echo=FALSE}
+#class.bi~mass
+p <- ggplot(data = diabetes, mapping = aes(x = mass, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Body mass index",
+              y = "Have diabete?",
+              title = "Scatter plot of Body mass index vs. Have diabetes?")
+p
+```
+
+```{r,echo=FALSE}
+#class.bi~pedi
+p <- ggplot(data = diabetes, mapping = aes(x = pedi, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Diabetes pedigree function",
+              y = "Have diabete?",
+              title = "Scatter plot of Diabetes pedigree function vs. Have diabetes?")
+p
+```
+
+```{r,echo=FALSE}
+#class.bi~Age
+p <- ggplot(data = diabetes, mapping = aes(x = age, y = class.bi))
+p <- p + geom_jitter(width = 0,
+                     height = 0.03,
+                     color = "blue", alpha = 0.1)
+p <- p + geom_smooth(color = "lightpink",
+                     se = FALSE)
+p <- p + labs(x = "Age",
+              y = "Have diabete?",
+              title = "Scatter plot of Age vs. Have diabetes?")
+p
+```
+
+
+# Model Selection & Interpretation
+
+Section 2 established that according to the initial scatter plot, we are able to see all the predictors might be useful in further study, although there are some deviations variability. In this section, we will fit different variables to logistic regression binomial models.Then, to classify new patients, we will create a new variable that is the predictive value, based on specified cutoff, we'll create and interpret confusion matrix to get the classifier that has high accuracy, high sensitivity, and high specificity. After that, to assess the appropriatness of the model, we will do residual diagnostics to see if there is some improvement we can do on the model.
+
+I recommended to use binomial distribution model with logit link function. The reason using binomial regression model is that the response variable of the model is binary which is tested_positive or tested_negative. The binomial distribution model allows us to compute the probability of having diabetes and the outcome for a given patient is either positive or negative. The reason using logit link function is to take a linear combination of the covariate values and convert those values to the scale of a probability, between 0 and 1. [1]
+
+Under the binomial regression model with logit link function, I suggested the first model to fit all predictors in the model. According to the summary data of fm.1, we are able to see that only four predictors are statistically significant with 90% confidence interval, and they are Number of pregnant, Plasma glucose concentration, body mass index, and age, which means that they are the most likely predictors among all predictors to be predictive. In the second model fm.2, we are able to improve the model by only using the statistically significant predictors mentioned above. In the third model, we will try to fit the model with less variable-Plasma glucose concentration and body mass index- to make the model more concise. However, because the prediction of the third model is not as good as the second model(we will explain it later), we will try to pick up the dropped predictor preg to fit in the fourth model with variables Plasma glucose concentration, body mass index, and number of pregnant.
+
+```{r}
+#fm.1: all predictors
+fm.1 <- glm(class.bi ~ preg+plas+pres+skin+insu+mass+pedi+age,
+            data = diabetes,
+            family = binomial(link = "logit"))
+summary(fm.1)
+```
+
+```{r}
+#fm.2: preg+plas+mass+age
+fm.2 <- glm(class.bi ~ preg+plas+mass+age,
+            data = diabetes,
+            family = binomial(link = "logit"))
+summary(fm.2)
+```
+
+```{r}
+#fm.3: plas+mass
+fm.3 <- glm(class.bi ~ plas+mass,
+            data = diabetes,
+            family = binomial(link = "logit"))
+summary(fm.3)
+```
+```{r}
+#fm.4: preg+plas+mass
+fm.4 <- glm(class.bi ~ preg+plas+mass,
+            data = diabetes,
+            family = binomial(link = "logit"))
+summary(fm.4)
+```
+
+In order to create a classifier, we should first create a new variable which is prediction for each record. With prediction, we can compare with the actual value by forming the actual values and the predictions. We will create a confusion matrix based on the prediction value using cutoff of 0.5. Accuracy, sensitivity, and specificity vale can be identified from the information provided by confusion matrix. Confusion matrix is a table that is often used to describe the performance of a classification model on a set of test data for which the actual values are known. The confusion matrix is shown in table below. To get the accuracy, sensitivity, and specificity of the model, we should do some calculations based on sensitivity rate, specificity rate, and classification rate. Sensitivity rate is the percent of events classified correctly, specificity rate is the percent of non-events classified correctly, and classification rate is the percent of all events or non events that are classified correctly. 
+
+Based on the output, a table or rates are created for comparing the rates between four models. According to the table, we are 
+able to see that the three rates of the four models are quite close to each other. To pick up the best two models, we should pick the models that have the highest rates. But by improving the model, increase on one rate not necessarily mean other rates will also increase, so we need to weigh the importance between the sensitivity, specificity and accuracy. Since classification rate includes all events or non events that are classified correctly, take emphasis on the accuracy might be a good way to asses the appropriateness. The first and second model performs well on the accuracy, so in next step, we will do some interpretations on these two models. One thing needs to be mentioned is that the sensitivity rate of all of the four models are not that high although we have already done some improvements on the model. So, we might need more information or sample data to improve the model to have higher rates on sensitivity, specificity, and accuracy.
+
+#confusion matrix for fm.1
+```{r,echo=FALSE}
+diabetes$fm1.mu <- predict(fm.1, type = "response")
+diabetes <- diabetes %>% mutate(pred.class1 = ifelse(fm1.mu > 0.5, 1, 0))
+conf.matrix <- xtabs(~ class.bi + pred.class1,
+      data = diabetes)
+conf.matrix
+
+#sensitivity
+sens <- conf.matrix[2,2]/sum(conf.matrix[2,])
+#specificity
+spec <- conf.matrix[1,1]/sum(conf.matrix[1,])
+#classification rate
+acc <- sum(conf.matrix[1,1],conf.matrix[2,2])/sum(conf.matrix[])
+
+sens
+spec
+acc
+```
+#confusion matrix for fm.2
+```{r,echo=FALSE}
+diabetes$fm2.mu <- predict(fm.2, type = "response")
+diabetes <- diabetes %>%
+  mutate(pred.class2 = ifelse(fm2.mu > 0.5, 1, 0))
+conf.matrix <- xtabs(~ class.bi + pred.class2,
+      data = diabetes)
+conf.matrix
+
+#sensitivity
+sens <- conf.matrix[2,2]/sum(conf.matrix[2,])
+#specificity
+spec <- conf.matrix[1,1]/sum(conf.matrix[1,])
+#classification rate
+acc <- sum(conf.matrix[1,1],conf.matrix[2,2])/sum(conf.matrix[])
+
+sens
+spec
+acc
+```
+#confusion matrix for fm.3
+```{r,echo=FALSE}
+diabetes$fm3.mu <- predict(fm.3, type = "response")
+diabetes <- diabetes %>%
+  mutate(pred.class3 = ifelse(fm3.mu > 0.5, 1, 0))
+conf.matrix <- xtabs(~ class.bi + pred.class3,
+      data = diabetes)
+conf.matrix
+
+#sensitivity
+sens <- conf.matrix[2,2]/sum(conf.matrix[2,])
+#specificity
+spec <- conf.matrix[1,1]/sum(conf.matrix[1,])
+#classification rate
+acc <- sum(conf.matrix[1,1],conf.matrix[2,2])/sum(conf.matrix[])
+
+sens
+spec
+acc
+```
+#confusion matrix for fm.4
+```{r,echo=FALSE}
+diabetes$fm4.mu <- predict(fm.4, type = "response")
+diabetes <- diabetes %>%
+  mutate(pred.class4 = ifelse(fm4.mu > 0.5, 1, 0))
+conf.matrix <- xtabs(~ class.bi + pred.class4,
+      data = diabetes)
+conf.matrix
+
+#sensitivity
+sens <- conf.matrix[2,2]/sum(conf.matrix[2,])
+#specificity
+spec <- conf.matrix[1,1]/sum(conf.matrix[1,])
+#classification rate
+acc <- sum(conf.matrix[1,1],conf.matrix[2,2])/sum(conf.matrix[])
+
+sens
+spec
+acc
+```
+#rate chart for four models
+```{r,echo=FALSE}
+fm1.vec <- c(0.5577889, 0.8871391,0.7741379)
+fm2.vec <- c(0.5628141,0.8792651,0.7706897)
+fm3.vec <- c(0.5175879,0.9002625,0.7689655)
+fm4.vec <- c(0.5577889,0.8713911,0.7637931)
+df <- data.frame(fm1.vec,fm2.vec,fm3.vec,fm4.vec)
+colnames(df) <- c("fm1","fm2","fm3","fm4")
+rownames(df) <- c("sensitivity", "specificity","accuracy")
+df
+```
+
+Next, we are going to use diagnostic plot to assess residuals of the model. Diagnostic plot is the plot of fitted values versus quantile residuals. In this model, we will use quantile residual, and quantile residual will be generated twice and create two graphs side by side to avoid having pattern due to random pick. In diagnostic plots, if the model fits well, the residuals should show no pattern, just constant variability around zero for all values of predictors. If we see any pattern such as quadratic curve, we might need to transform the predictor to improve the model. 
+
+Eight side-by-side diagnostic plots will created by the eight predictors. Base on the graphs, we are able to indicate that the distribution of the first seven residual graphs perform well. For each graph, although we might see some "tails" up or down on one side plot, the plot of the other side does not have the exactly same "tail", and we might consider the "tails" as pattern due to random pick or due to variation cased by some outliers. So, we are able to conclude that the relationship within the first seven models are reasonable: the residuals spread randomly around the 0 line. However, the eighth seems 
+
+
+
+```{r,echo=FALSE}
+diabetes$fm1.rQ1 <- qresid(fm.1)
+diabetes$fm1.rQ2 <- qresid(fm.1)
+p <- ggplot(data = diabetes,
+            mapping = aes(x = fm1.mu,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Model fm.1")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = fm1.mu,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Model fm.1")
+grid.arrange(p, q, nrow = 1)
+```
+
+
+```{r,echo=FALSE}
+diabetes$fm2.rQ1 <- qresid(fm.2)
+diabetes$fm2.rQ2 <- qresid(fm.2)
+p <- ggplot(data = diabetes,
+            mapping = aes(x = fm2.mu,
+                          y = fm2.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Model fm.2")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = fm2.mu,
+                          y = fm2.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Model fm.2")
+grid.arrange(p, q, nrow = 1)
+```
+
+```{r,echo=FALSE}
+diabetes$fm1.rQ1 <- qresid(fm.1)
+diabetes$fm1.rQ2 <- qresid(fm.1)
+p <- ggplot(data = diabetes,
+            mapping = aes(x = preg,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of preg")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = preg,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of preg")
+grid.arrange(p, q, nrow = 1)
+```
+
+
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = plas,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of plas")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = plas,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of plas")
+grid.arrange(p, q, nrow = 1)
+```
+
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = pres,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "MQuantile residual plot of pres")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = pres,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of pres")
+grid.arrange(p, q, nrow = 1)
+```
+
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = skin,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of skin")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = skin,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of skin")
+grid.arrange(p, q, nrow = 1)
+```
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = insu,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of insu")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = insu,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of insu")
+grid.arrange(p, q, nrow = 1)
+```
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = mass,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of mass")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = mass,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of mass")
+grid.arrange(p, q, nrow = 1)
+```
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = pedi,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of pedi")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = pedi,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of pedi")
+grid.arrange(p, q, nrow = 1)
+```
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = age,
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of age")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = age,
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of age")
+grid.arrange(p, q, nrow = 1)
+```
+
+However, the quantile residual plot of the eighth model does not perform as well as the others. In the graph, it seems to have quadratic pattern on both sides of the quantile residual plot. The residual points are not evenly distributed around zero. We might think we have not picked up all information available. Since predictor age is in our predicted model, so we need to improve the model by implementing transformation on the predictor Age or square it. However, even if we add a logrithm to the age or square it, the pattern does not seem to be better. So, we might need more data points or do some other transformations on the predictor to figure out whether it can be included in the model or not. 
+
+```{r,echo=FALSE}
+p <- ggplot(data = diabetes,
+            mapping = aes(x = log(age),
+                          y = fm1.rQ1))
+p <- p + geom_point() + geom_smooth(se = TRUE)
+p <- p + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of log(age)")
+
+q <- ggplot(data = diabetes,
+            mapping = aes(x = log(age),
+                          y = fm1.rQ2))
+q <- q + geom_point() + geom_smooth(se = TRUE)
+q <- q + labs(x = "Fitted Values",
+              y = "Quantile Residuals",
+              title = "Quantile residual plot of log(age)")
+grid.arrange(p, q, nrow = 1)
+```
+
+We have done residual diagnostics and dropped predictor age before having more information on it. Now we have two models to compare: the first model with predictors Number of pregnant, Plasma glucose concentration, Diastolic blood pressure, Triceps skin fold thickness, 2-Hour serum insulin, Body mass index, Diabetes pedigree function; and the second model with predictors Number of pregnant, Plasma glucose concentration, and body mass index. The first model includes all the predictors in the second model. We might attach priority to the simpler model because it can eliminate some distractions from useless information. We fit the final selected model again: all of the predictors are statistically significant. The final model equation is shown below.
+
+
+```{r}
+fm.5 <- glm(class.bi ~ preg+plas+mass,
+            data = diabetes,
+            family = binomial(link = "logit"))
+summary(fm.5)
+```
+
+#best model equation
+$$
+  \begin{align}
+    logit(\mathbb[\text{probability of having diabetes}]) &= 0.146749 \cdot \text{Number of pregnant}+ 0.034432 \cdot \text{Plasma glucose concentration}+0.075833 \cdot \text{Body mass index}\\
+  \end{align}
+$$
+
+In the fifth model, there are three predictors and all of them are statistically significant. We are able to observe coefficients of the three predictors from coefficients table below According to the coefficients, we are able to interpret the data that helps better understand data. Coefficient of variable Number of Pregnant is 0.146749, which indicates that the odds of having diabetes will increase a multiplicative of 1.158064 as one unit increase on Number of Pregnant. The coefficient for the Plasma glucose concentration is 0.03443208 which is interpreted as that the odds of having diabetes will increase a multiplicative of 1.035032 as one unit increase on Plasma glucose concentration. The coefficient for Body mass index is 0.07583279, which is interpreted as the odds of having diabetes will increase a multiplicative of 1.078782 as one unit increase on Body mass index. We can clearly see that as the three predictors increase, the odds ratio of patient having diabetes will increase.
+
+#Coefficients table
+```{r,echo=FALSE}
+summary(fm.5)$coefficients[,1]
+```
+
+
+
+# Score Function
+```{r}
+summary(fm.1)
+
+```
+
+
+```{r}
+score <- function(diabetes) 
+  {eta = -8.1 + 0.15*diabetes$preg + 0.036 * diabetes$plas
+  actual.prob = exp(eta)/(1+exp(eta))
+  classification = ifelse(actual.prob>0.5, 1, 0)
+  diabetes$prediction = classification
+  return(diabetes)}
+```
+
+
+
+# Conclusion
+Although all patients are very different: they have different physical fitness and experience, but in this report we can basically determine the important factors that affect whether a patient will develop diabetes within five years. In the report, I recommend four different models under binomial regression analysis, finally obtained the optimal model, including important factors like number of patient pregnancies, plasma glucose concentration, and body density indicators. This study was based on 580 individual patients female records, with some deviant zero value in the data set. Although this is not a large data set, the data set is informative enough to allow us to develop statistical models. It should be noted that none of the models created in the article have a high sensitivity, which means that we still need to collect more data or find factors that are more related to response variable-diabetes. In addition to the predictor included in the data set, the doctor collecting the data may consider putting some other information into the data record, such as the frequency of the patient's exercise, medication intake, family genetic records, etc., which may have an impact on the accuracy of the prediction.
+
+
+# Citation
+[1] https://www.sciencedirect.com/topics/mathematics/logit-link-function#:~:text=The%20purpose%20of%20the%20logit,(3.4).
+[2] https://www.cdc.gov/diabetes/library/features/diabetes-and-women.html#:~:text=Diabetes%20increases%20the%20risk%20of,%2C%20kidney%20disease%2C%20and%20depression.
+
+
+
